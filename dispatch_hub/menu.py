@@ -49,6 +49,9 @@ class App:
         if not name:
             return
         profile = self.profiles.load(name)
+        if not profile.panes:
+            console.print(f"[red]Profile '{name}' has no panes; nothing to launch.[/red]")
+            return
         missing_tools = check_tooling()
         if missing_tools:
             console.print(f"[red]Missing tools on PATH: {', '.join(missing_tools)}.[/red]")
@@ -75,18 +78,26 @@ class App:
         layout = questionary.select(
             "Layout:", choices=["vertical", "horizontal", "grid"]
         ).ask()
+        if layout is None:
+            return
         panes: list[Pane] = []
         role_names = [r.name for r in self.roles.load()]
         while True:
             directory = questionary.text("Project directory:").ask()
+            if directory is None:
+                return
             role = questionary.select(
                 "Role:", choices=["(none)"] + role_names
             ).ask()
+            if role is None:
+                return
             role = None if role == "(none)" else role
             choice = questionary.select(
                 "Startup prompt:",
                 choices=["continue", "workspace", "plan", "custom"],
             ).ask()
+            if choice is None:
+                return
             custom = ""
             if choice == "custom":
                 custom = questionary.text("Custom prompt:").ask() or ""

@@ -63,6 +63,8 @@ def _layout_actions(layout: str, n: int) -> list[tuple[str, str | None, list[str
 
 
 def build_command(profile: Profile, script_paths: list[str]) -> list[str]:
+    if not profile.panes:
+        raise ValueError("profile has no panes")
     actions = _layout_actions(profile.layout, len(profile.panes))
     subs: list[list[str]] = []
     pane_idx = 0

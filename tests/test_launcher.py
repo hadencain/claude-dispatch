@@ -50,6 +50,12 @@ def test_unknown_layout_raises():
         build_command(_prof("diagonal", [Pane("C:/a", None, "")]), ["s0"])
 
 
+def test_empty_panes_raises():
+    import pytest
+    with pytest.raises(ValueError):
+        build_command(_prof("grid", []), [])
+
+
 from pathlib import Path
 from dispatch_hub.launcher import (
     render_pane_script, write_pane_scripts, sweep_stale_scripts, launch,
