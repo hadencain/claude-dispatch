@@ -62,14 +62,51 @@ from dispatch_hub.launcher import (
 )
 
 
-def test_render_script_with_role_embeds_charter_verbatim():
+import base64
+
+
+def _decoded_b64_payloads(script: str) -> list[str]:
+    """Pull every FromBase64String('...') literal out of a script and decode it."""
+    import re
+    out = []
+    for m in re.finditer(r"FromBase64String\('([^']*)'\)", script):
+        out.append(base64.b64decode(m.group(1)).decode("utf-8"))
+    return out
+
+
+def test_render_script_with_role_embeds_charter_recoverably():
     pane = Pane("C:/a", "Backend", "go")
     charter = 'Use "quotes" and /slashes/ freely.'
     script = render_pane_script(pane, charter)
-    assert charter in script                      # verbatim, no escaping mangling
+    # charter is base64-encoded, not raw — but must round-trip exactly
+    assert charter in _decoded_b64_payloads(script)
     assert "--append-system-prompt $charter" in script
     assert "Set-Location -LiteralPath 'C:/a'" in script
     assert "$PSCommandPath" in script             # self-delete present
+
+
+def test_render_script_payloads_survive_here_string_delimiter():
+    # A charter containing a bare '@ line would terminate a PowerShell
+    # here-string early. base64 encoding must neutralize it.
+    charter = "line one\n'@\nclose-looking line"
+    script = render_pane_script(Pane("C:/a", "Backend", ""), charter)
+    assert "@'" not in script                     # no here-string opener used at all
+    assert charter in _decoded_b64_payloads(script)
+
+
+def test_build_command_uses_injected_shell():
+    prof = _prof("horizontal", [Pane("C:/a", None, "")])
+    cmd = build_command(prof, ["s0"], shell="powershell")
+    assert "powershell" in cmd
+    assert "pwsh" not in cmd
+
+
+def test_resolve_shell_prefers_pwsh_then_falls_back():
+    from dispatch_hub.launcher import _resolve_shell
+    assert _resolve_shell(which=lambda n: "C:/pwsh.exe") == "pwsh"
+    assert _resolve_shell(which=lambda n: None) == "powershell"
+    # only powershell present
+    assert _resolve_shell(which=lambda n: "found" if n == "powershell" else None) == "powershell"
 
 
 def test_render_script_no_role_omits_charter():

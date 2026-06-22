@@ -17,9 +17,17 @@ def test_validate_directories_all_present(tmp_path):
 
 
 def test_check_tooling_reports_missing_claude():
+    # wt.exe and a shell (pwsh) present, claude absent
     def fake_which(name):
-        return "C:/wt.exe" if name == "wt.exe" else None
+        return "found" if name in ("wt.exe", "pwsh") else None
     assert check_tooling(which=fake_which) == ["claude"]
+
+
+def test_check_tooling_reports_missing_shell():
+    # wt.exe and claude present, but neither pwsh nor powershell on PATH
+    def fake_which(name):
+        return "found" if name in ("wt.exe", "claude") else None
+    assert check_tooling(which=fake_which) == ["powershell"]
 
 
 def test_check_tooling_all_present():

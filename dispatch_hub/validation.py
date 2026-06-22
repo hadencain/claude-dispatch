@@ -19,7 +19,13 @@ def validate_directories(profile: Profile) -> list[str]:
 
 
 def check_tooling(which=shutil.which) -> list[str]:
-    return [tool for tool in REQUIRED_TOOLS if which(tool) is None]
+    missing = [tool for tool in REQUIRED_TOOLS if which(tool) is None]
+    # Panes are spawned via PowerShell; pwsh (PS7) is preferred but not on
+    # stock Windows, so powershell.exe (PS5.1) is an acceptable fallback.
+    # Only a problem if neither exists.
+    if which("pwsh") is None and which("powershell") is None:
+        missing.append("powershell")
+    return missing
 
 
 def validate_profile_name(name: str, existing: list[str]) -> str | None:

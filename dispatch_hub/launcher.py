@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import base64
 import math
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -12,6 +14,13 @@ LAUNCH_DIR_NAME = ".launch"
 
 # layout name -> wt split-pane divider flag for simple layouts
 _SIMPLE_FLAG = {"vertical": "-H", "horizontal": "-V"}
+
+
+def _resolve_shell(which=shutil.which) -> str:
+    """Prefer PowerShell 7 (`pwsh`); fall back to Windows PowerShell
+    (`powershell.exe`), which is always present on Windows. `pwsh` is NOT
+    installed by default on stock Windows, so hardcoding it breaks launch."""
+    return "pwsh" if which("pwsh") else "powershell"
 
 
 def _pane_title(pane: Pane) -> str:
@@ -62,7 +71,8 @@ def _layout_actions(layout: str, n: int) -> list[tuple[str, str | None, list[str
     return actions
 
 
-def build_command(profile: Profile, script_paths: list[str]) -> list[str]:
+def build_command(profile: Profile, script_paths: list[str],
+                  shell: str = "pwsh") -> list[str]:
     if not profile.panes:
         raise ValueError("profile has no panes")
     actions = _layout_actions(profile.layout, len(profile.panes))
@@ -79,7 +89,7 @@ def build_command(profile: Profile, script_paths: list[str]) -> list[str]:
         else:
             tokens = ["split-pane"] + ([flag] if flag else []) + list(extra)
         tokens += ["-d", pane.directory, "--title", _pane_title(pane),
-                   "pwsh", "-NoExit", "-File", script]
+                   shell, "-NoExit", "-File", script]
         subs.append(tokens)
         pane_idx += 1
 
@@ -95,6 +105,15 @@ def _safe_name(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]", "_", name) or "profile"
 
 
+def _ps_decode_expr(text: str) -> str:
+    """PowerShell expression that reconstructs `text` exactly from base64.
+    Base64 is pure ASCII with no quotes, so it embeds safely in a
+    single-quoted string and survives any content (newlines, `'@`, quotes,
+    non-ASCII) without here-string delimiter or encoding hazards."""
+    b64 = base64.b64encode(text.encode("utf-8")).decode("ascii")
+    return f"[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{b64}'))"
+
+
 def render_pane_script(pane: Pane, charter: str | None) -> str:
     dir_lit = pane.directory.replace("'", "''")
     lines = [
@@ -103,9 +122,9 @@ def render_pane_script(pane: Pane, charter: str | None) -> str:
     ]
     has_prompt = bool(pane.startup_prompt)
     if has_prompt:
-        lines += ["$prompt = @'", pane.startup_prompt, "'@"]
+        lines.append(f"$prompt = {_ps_decode_expr(pane.startup_prompt)}")
     if charter is not None:
-        lines += ["$charter = @'", charter, "'@"]
+        lines.append(f"$charter = {_ps_decode_expr(charter)}")
 
     call = "claude"
     if charter is not None:
@@ -144,5 +163,5 @@ def launch(profile: Profile, charters: dict[str, str], work_dir: Path,
            runner=subprocess.run):
     sweep_stale_scripts(work_dir)
     paths = write_pane_scripts(profile, charters, work_dir)
-    cmd = build_command(profile, [str(p) for p in paths])
+    cmd = build_command(profile, [str(p) for p in paths], shell=_resolve_shell())
     return runner(cmd)
