@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import math
 import os
+import re
+import subprocess
+from pathlib import Path
 
 from .models import Pane, Profile
 
@@ -84,3 +87,60 @@ def build_command(profile: Profile, script_paths: list[str]) -> list[str]:
             cmd.append(";")
         cmd += sub
     return cmd
+
+
+def _safe_name(name: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]", "_", name) or "profile"
+
+
+def render_pane_script(pane: Pane, charter: str | None) -> str:
+    dir_lit = pane.directory.replace("'", "''")
+    lines = [
+        "Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue",
+        f"Set-Location -LiteralPath '{dir_lit}'",
+    ]
+    has_prompt = bool(pane.startup_prompt)
+    if has_prompt:
+        lines += ["$prompt = @'", pane.startup_prompt, "'@"]
+    if charter is not None:
+        lines += ["$charter = @'", charter, "'@"]
+
+    call = "claude"
+    if charter is not None:
+        call += " --append-system-prompt $charter"
+    if has_prompt:
+        call += " $prompt"
+    lines.append(call)
+    return "\r\n".join(lines) + "\r\n"
+
+
+def write_pane_scripts(profile: Profile, charters: dict[str, str],
+                       work_dir: Path) -> list[Path]:
+    work_dir.mkdir(parents=True, exist_ok=True)
+    paths: list[Path] = []
+    safe = _safe_name(profile.name)
+    for i, pane in enumerate(profile.panes):
+        charter = charters.get(pane.role) if pane.role else None
+        content = render_pane_script(pane, charter)
+        p = work_dir / f"{safe}_{i}.ps1"
+        p.write_text(content, encoding="utf-8")
+        paths.append(p)
+    return paths
+
+
+def sweep_stale_scripts(work_dir: Path) -> None:
+    if not work_dir.exists():
+        return
+    for f in work_dir.glob("*.ps1"):
+        try:
+            f.unlink()
+        except OSError:
+            pass
+
+
+def launch(profile: Profile, charters: dict[str, str], work_dir: Path,
+           runner=subprocess.run):
+    sweep_stale_scripts(work_dir)
+    paths = write_pane_scripts(profile, charters, work_dir)
+    cmd = build_command(profile, [str(p) for p in paths])
+    return runner(cmd)

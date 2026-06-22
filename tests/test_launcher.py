@@ -48,3 +48,59 @@ def test_unknown_layout_raises():
     import pytest
     with pytest.raises(ValueError):
         build_command(_prof("diagonal", [Pane("C:/a", None, "")]), ["s0"])
+
+
+from pathlib import Path
+from dispatch_hub.launcher import (
+    render_pane_script, write_pane_scripts, sweep_stale_scripts, launch,
+)
+
+
+def test_render_script_with_role_embeds_charter_verbatim():
+    pane = Pane("C:/a", "Backend", "go")
+    charter = 'Use "quotes" and /slashes/ freely.'
+    script = render_pane_script(pane, charter)
+    assert charter in script                      # verbatim, no escaping mangling
+    assert "--append-system-prompt $charter" in script
+    assert "Set-Location -LiteralPath 'C:/a'" in script
+    assert "$PSCommandPath" in script             # self-delete present
+
+
+def test_render_script_no_role_omits_charter():
+    script = render_pane_script(Pane("C:/a", None, "hello"), None)
+    assert "--append-system-prompt" not in script
+    assert "$charter" not in script
+    assert "claude $prompt" in script
+
+
+def test_render_script_no_prompt_omits_prompt_arg():
+    script = render_pane_script(Pane("C:/a", None, ""), None)
+    assert script.rstrip().endswith("claude")
+
+
+def test_write_pane_scripts_creates_one_file_per_pane(tmp_path):
+    prof = Profile.new("sprint", "horizontal",
+                       [Pane("C:/a", "Backend", "go"), Pane("C:/b", None, "")])
+    paths = write_pane_scripts(prof, {"Backend": "be backend"}, tmp_path)
+    assert len(paths) == 2
+    assert all(p.exists() and p.suffix == ".ps1" for p in paths)
+
+
+def test_sweep_removes_stale_scripts(tmp_path):
+    (tmp_path / "old.ps1").write_text("x")
+    sweep_stale_scripts(tmp_path)
+    assert list(tmp_path.glob("*.ps1")) == []
+
+
+def test_launch_invokes_runner_with_wt_command(tmp_path):
+    prof = Profile.new("p", "horizontal", [Pane("C:/a", None, "go")])
+    captured = {}
+
+    def fake_runner(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return "ran"
+
+    result = launch(prof, {}, tmp_path, runner=fake_runner)
+    assert result == "ran"
+    assert captured["cmd"][0] == "wt.exe"
+    assert "new-tab" in captured["cmd"]
