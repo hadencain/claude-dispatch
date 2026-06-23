@@ -6,3 +6,4 @@ config/.launch/
 config/profiles/
 config/roles.json
 scratch/
+*.lnk
