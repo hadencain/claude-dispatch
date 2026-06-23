@@ -1,4 +1,6 @@
-from dispatch_hub.roles import RoleStore, DEFAULT_ROLES
+import pytest
+
+from dispatch_hub.roles import RoleStore, DEFAULT_ROLES, roles_from_json
 from dispatch_hub.models import Role
 
 
@@ -37,3 +39,44 @@ def test_upsert_adds_then_delete_removes(tmp_path):
     assert store.get("Docs").charter == "write docs"
     store.delete("Docs")
     assert store.get("Docs") is None
+
+
+def test_roles_from_json_parses_array():
+    text = '[{"name": "Security", "charter": "guard things"}, ' \
+           '{"name": "Docs", "charter": "write docs", "builtin": false}]'
+    roles = roles_from_json(text)
+    assert [r.name for r in roles] == ["Security", "Docs"]
+    assert roles[0].charter == "guard things"
+
+
+def test_roles_from_json_accepts_single_object():
+    roles = roles_from_json('{"name": "Security", "charter": "guard"}')
+    assert len(roles) == 1 and roles[0].name == "Security"
+
+
+def test_roles_from_json_forces_builtin_false():
+    # imported roles are always custom, even if the JSON claims builtin
+    roles = roles_from_json('[{"name": "X", "charter": "c", "builtin": true}]')
+    assert roles[0].builtin is False
+
+
+def test_roles_from_json_rejects_missing_fields():
+    with pytest.raises(ValueError):
+        roles_from_json('[{"name": "NoCharter"}]')
+
+
+def test_roles_from_json_rejects_non_role_shape():
+    with pytest.raises(ValueError):
+        roles_from_json('"just a string"')
+
+
+def test_import_roles_adds_and_updates(tmp_path):
+    store = RoleStore(tmp_path / "roles.json")
+    store.ensure_seeded()
+    added, updated = store.import_roles([
+        Role("Security", "guard"),          # new
+        Role("Backend", "overridden"),      # updates a built-in
+    ])
+    assert (added, updated) == (1, 1)
+    assert store.get("Security").charter == "guard"
+    assert store.get("Backend").charter == "overridden"

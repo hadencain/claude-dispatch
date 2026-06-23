@@ -5,6 +5,31 @@ from pathlib import Path
 
 from .models import Role
 
+
+def roles_from_json(text: str) -> list[Role]:
+    """Parse a JSON role definition (single object or array) into Roles.
+
+    Accepts the shape produced by the role-authoring prompt:
+    `[{"name": ..., "charter": ..., "builtin": false}, ...]`. Imported roles
+    are always treated as custom (builtin=False) so the built-in protection
+    stays meaningful — you don't import built-ins. Raises ValueError on any
+    structurally invalid entry."""
+    data = json.loads(text)
+    if isinstance(data, dict):
+        data = [data]
+    if not isinstance(data, list):
+        raise ValueError("expected a JSON object or array of role objects")
+    roles: list[Role] = []
+    for d in data:
+        if not isinstance(d, dict) or "name" not in d or "charter" not in d:
+            raise ValueError("each role needs a 'name' and a 'charter'")
+        name = str(d["name"]).strip()
+        charter = str(d["charter"]).strip()
+        if not name or not charter:
+            raise ValueError("'name' and 'charter' must be non-empty")
+        roles.append(Role(name=name, charter=charter, builtin=False))
+    return roles
+
 DEFAULT_ROLES: list[Role] = [
     Role("Architect",
          "You are the Architect. Focus on system design, module boundaries, "
@@ -71,3 +96,20 @@ class RoleStore:
 
     def delete(self, name: str) -> None:
         self.save([r for r in self.load() if r.name != name])
+
+    def import_roles(self, roles: list[Role]) -> tuple[int, int]:
+        """Bulk add/replace roles by name in a single load+save.
+        Returns (added, updated) counts."""
+        current = self.load()
+        index = {r.name: i for i, r in enumerate(current)}
+        added = updated = 0
+        for r in roles:
+            if r.name in index:
+                current[index[r.name]] = r
+                updated += 1
+            else:
+                index[r.name] = len(current)
+                current.append(r)
+                added += 1
+        self.save(current)
+        return added, updated

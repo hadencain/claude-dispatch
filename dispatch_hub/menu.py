@@ -4,12 +4,13 @@ from pathlib import Path
 
 import questionary
 from rich.console import Console
+from rich.panel import Panel
 from rich.table import Table
 
 from .launcher import LAUNCH_DIR_NAME, launch
 from .models import Pane, Profile, Role
 from .presets import PRESETS
-from .roles import RoleStore
+from .roles import RoleStore, roles_from_json
 from .store import ProfileStore
 from .validation import check_tooling, validate_directories, validate_profile_name
 
@@ -132,11 +133,36 @@ class App:
             console.print(self._roles_table(roles))
             action = questionary.select(
                 "Manage roles:",
-                choices=["Edit a charter", "Add a role", "Delete a custom role", "Back"],
+                choices=["View a charter", "Edit a charter", "Add a role",
+                         "Import from JSON file", "Delete a custom role", "Back"],
             ).ask()
             if action in (None, "Back"):
                 return
-            if action == "Edit a charter":
+            if action == "View a charter":
+                name = questionary.select(
+                    "View which role?", choices=[r.name for r in roles]
+                ).ask()
+                if name is None:
+                    continue
+                role = self.roles.get(name)
+                label = role.name + (" (built-in)" if role.builtin else " (custom)")
+                console.print(Panel(role.charter, title=label, expand=False))
+            elif action == "Import from JSON file":
+                path = questionary.path("Path to roles JSON file:").ask()
+                if not path:
+                    continue
+                try:
+                    text = Path(path).read_text(encoding="utf-8")
+                    parsed = roles_from_json(text)
+                except (OSError, ValueError) as e:
+                    console.print(f"[red]Could not import: {e}[/red]")
+                    continue
+                added, updated = self.roles.import_roles(parsed)
+                console.print(
+                    f"[green]Imported {len(parsed)} role(s): "
+                    f"{added} added, {updated} updated.[/green]"
+                )
+            elif action == "Edit a charter":
                 name = questionary.select(
                     "Edit which role?", choices=[r.name for r in roles]
                 ).ask()

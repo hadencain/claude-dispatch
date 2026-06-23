@@ -152,13 +152,34 @@ Claude behaves. Four are built in:
 
 Choose **Manage roles** for a live editor:
 
+- **View a charter** — show a role's full charter text (the overview table
+  truncates long charters; this shows the whole thing).
 - **Edit a charter** — change any role's charter text (built-ins included).
 - **Add a role** — create a new custom role with its own charter.
+- **Import from JSON file** — bulk-add roles from a JSON file. Point it at a
+  file containing a single role object or an array of them; matching names are
+  updated, new names are added. Imported roles are always custom. This is how
+  you load charters generated elsewhere (see below).
 - **Delete a custom role** — remove a role you added. Built-in roles are
   **delete-protected** (you can edit their charters but not remove them).
 
 Changes are written immediately to `config/roles.json`. You can also edit that
 file by hand if you prefer.
+
+### Generating roles with another AI, then importing
+
+`docs/role-authoring-prompt.md` is a portable prompt you can paste into any AI
+model. It defines the charter structure this system expects and asks the model
+to emit a ready-to-import JSON array:
+
+```json
+[
+  { "name": "Security", "charter": "You are the Security reviewer. Focus on ...", "builtin": false }
+]
+```
+
+Save that array to a file, then **Manage roles → Import from JSON file** to load
+it in one step.
 
 ---
 
