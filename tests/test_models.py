@@ -3,7 +3,7 @@ from dispatch_hub.presets import PRESETS
 
 
 def test_role_roundtrip():
-    r = Role(name="Backend", charter="Be backend.", builtin=True)
+    r = Role(name="Backend", charter="Be backend.")
     assert Role.from_dict(r.to_dict()) == r
 
 

@@ -12,14 +12,13 @@ def _now() -> str:
 class Role:
     name: str
     charter: str
-    builtin: bool = False
 
     def to_dict(self) -> dict:
-        return {"name": self.name, "charter": self.charter, "builtin": self.builtin}
+        return {"name": self.name, "charter": self.charter}
 
     @classmethod
     def from_dict(cls, d: dict) -> "Role":
-        return cls(name=d["name"], charter=d["charter"], builtin=d.get("builtin", False))
+        return cls(name=d["name"], charter=d["charter"])
 
 
 @dataclass
