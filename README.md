@@ -21,6 +21,7 @@ The tool itself is pure Python, but it drives external programs. You need:
 | **Claude Code CLI** (`claude`) | what each pane actually runs | `claude --version` |
 | **PowerShell** (`pwsh` *or* `powershell.exe`) | each pane is launched through it | `powershell -v` |
 | `rich`, `questionary` | the menu UI | installed via requirements |
+| `anthropic` | Dispatch from queue triage (optional) | installed via requirements |
 
 `pwsh` (PowerShell 7) is preferred but **not required** — the launcher falls
 back to the built-in `powershell.exe` (5.1) automatically. The only hard
@@ -57,6 +58,7 @@ You get an arrow-key menu:
 ? Claude Dispatch Hub
 > Launch session
   Create session
+  Dispatch from queue
   Delete session
   Manage roles
   Quit
@@ -91,15 +93,28 @@ Choose **Create session** and answer the prompts:
    | `grid` | roughly even grid | **best-effort** — geometry is approximate and may need tuning |
 
 3. **Per pane**, repeated until you say stop:
-   - **Project directory** — an existing folder the pane opens in (validated at
-     launch, not here, so a typo surfaces when you try to run it).
+   - **Project directory** — a searchable list of projects discovered in your
+     workspace (type to filter), or pick **✎ Type a path manually** to enter any
+     path. The folder is validated at launch, not here, so a typo surfaces when
+     you try to run it.
    - **Role** — `(none)` or one of your roles. The role's charter is injected
      into that pane's Claude via `--append-system-prompt`.
-   - **Startup prompt** — what the pane does the moment Claude starts (see
-     presets below).
-   - **Add another pane?** — yes to add more, no to finish.
-4. **Review** — a table of the profile is shown. Confirm to save it to
-   `config/profiles/<name>.json`.
+   - **Startup prompt** — what the pane does the moment Claude starts. Each
+     preset shows its resolved text inline so you know what it sends before you
+     pick it (see presets below).
+   - **Next?** — add another pane, or finish to review.
+4. **Review** — a table of the profile is shown. Save it to
+   `config/profiles/<name>.json`, add another pane, or discard.
+
+**Backing up:** every menu has a **← Back** option that steps *back one field*
+so you can fix the last answer without throwing away the whole profile. On the
+text fields (profile name, manual path, custom prompt), leave the input **blank**
+to go back. Backing out of the profile name returns you to the main menu.
+(Esc also works as Back where your terminal supports it.)
+
+The project list is scanned from your workspace root (the Ship workspace by
+default). Override it by creating `config/settings.json` with
+`{ "workspace_root": "C:/some/other/root" }`.
 
 ### Startup prompt presets
 
@@ -138,15 +153,43 @@ folder name.
 
 ---
 
+## Dispatch from queue
+
+Reads a Markdown work-queue file, lets you multi-select items from the
+`## Queued` section, sends them to Claude for triage (role, directory, and
+startup prompt assignment), then launches the result as a session. Dispatched
+items are moved to `## In Progress` in the queue file after launch.
+
+**Setup:**
+
+1. Set `work_queue_path` in `config/settings.json` to the absolute path of
+   your Markdown queue file.
+2. Set the `ANTHROPIC_API_KEY` environment variable, or add
+   `anthropic_api_key` to `config/settings.json` (do not commit this file if
+   it contains a key).
+3. Optionally set `triage_model` in settings (default: `claude-sonnet-4-6`).
+
+If the queue path or API key is missing, the action prints a one-line hint
+and returns to the menu. Items with an unresolved directory (not found in the
+discovered project list) block launch until fixed.
+
+---
+
 ## Roles
 
 Roles are reusable **charters** — system-prompt text that shapes how a pane's
-Claude behaves. Four are built in:
+Claude behaves. Ten are built in:
 
 - **Architect** — system design, boundaries, trade-offs; reviews rather than implements.
 - **Backend** — data models, business logic, APIs, persistence, their tests.
 - **Frontend** — UI, components, layout, state, user-facing behaviour.
 - **QA** — testing, edge cases, regressions, verification.
+- **Security** — auth, attack surfaces, dependency risk, secure defaults.
+- **Performance** — latency, throughput, resource usage, profiling, bottlenecks.
+- **Data** — schemas, migrations, storage strategy, data quality, lifecycle.
+- **DevOps** — deployment, environments, automation, observability, reliability.
+- **Docs** — documentation, onboarding, developer experience, knowledge transfer.
+- **Research** — investigation, feasibility, trade-offs, dependency evaluation.
 
 ### Managing roles
 
@@ -154,32 +197,10 @@ Choose **Manage roles** for a live editor:
 
 - **View a charter** — show a role's full charter text (the overview table
   truncates long charters; this shows the whole thing).
-- **Edit a charter** — change any role's charter text (built-ins included).
-- **Add a role** — create a new custom role with its own charter.
-- **Import from JSON file** — bulk-add roles from a JSON file. Point it at a
-  file containing a single role object or an array of them; matching names are
-  updated, new names are added. Imported roles are always custom. This is how
-  you load charters generated elsewhere (see below).
-- **Delete a custom role** — remove a role you added. Built-in roles are
-  **delete-protected** (you can edit their charters but not remove them).
+- **Edit a charter** — change any role's charter text.
 
 Changes are written immediately to `config/roles.json`. You can also edit that
-file by hand if you prefer.
-
-### Generating roles with another AI, then importing
-
-`docs/role-authoring-prompt.md` is a portable prompt you can paste into any AI
-model. It defines the charter structure this system expects and asks the model
-to emit a ready-to-import JSON array:
-
-```json
-[
-  { "name": "Security", "charter": "You are the Security reviewer. Focus on ...", "builtin": false }
-]
-```
-
-Save that array to a file, then **Manage roles → Import from JSON file** to load
-it in one step.
+file by hand if you prefer — including adding your own roles to the array.
 
 ---
 
@@ -191,7 +212,7 @@ All under `config/` in the directory you run from (all git-ignored):
 config/
   profiles/
     <name>.json      # one file per saved profile
-  roles.json         # your roles (seeded with the four built-ins on first run)
+  roles.json         # your roles (seeded with the ten built-ins on first run)
   .launch/           # generated per-pane PowerShell scripts (scratch)
 ```
 
@@ -268,12 +289,14 @@ directory every time; `config/` is relative to your working directory.
 | `python -m dispatch_hub` | start the interactive menu |
 | Launch session | preflight + open a saved profile as a live session |
 | Create session | build and save a new profile |
+| Dispatch from queue | triage work-queue items and launch as a session |
 | Delete session | remove a saved profile |
-| Manage roles | add / edit / delete role charters |
+| Manage roles | view / edit role charters |
 | Quit | exit |
 
 | File | Purpose |
 |------|---------|
 | `config/profiles/<name>.json` | saved profiles (hand-editable) |
 | `config/roles.json` | role charters (hand-editable) |
+| `config/settings.json` | workspace root, queue path, API key, triage model |
 | `config/.launch/` | generated launch scripts (scratch, auto-cleaned) |
