@@ -234,14 +234,8 @@ class App:
 
     # ---- directory / prompt pickers ----
     def _workspace_root(self) -> Path:
-        if SETTINGS_FILE.exists():
-            try:
-                wr = json.loads(SETTINGS_FILE.read_text(encoding="utf-8")).get("workspace_root")
-                if wr:
-                    return Path(wr)
-            except (json.JSONDecodeError, OSError):
-                pass
-        return default_workspace_root()
+        wr = self._load_settings().get("workspace_root")
+        return Path(wr) if wr else default_workspace_root()
 
     def _pick_directory(self, default: str | None):
         """Flat searchable list of discovered projects, plus manual entry.
