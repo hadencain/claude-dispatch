@@ -51,3 +51,36 @@ def test_dispatch_returns_early_without_queue_path(monkeypatch, capsys):
     assert called["triage"] is False
     out = capsys.readouterr().out
     assert "work_queue_path" in out
+
+
+def test_save_and_load_settings_roundtrip(tmp_path, monkeypatch):
+    import dispatch_hub.menu as menu
+    monkeypatch.setattr(menu, "SETTINGS_FILE", tmp_path / "settings.json")
+    app = _app()
+    app._save_settings({"anthropic_api_key": "sk-test", "work_queue_path": "C:/x.md"})
+    loaded = app._load_settings()
+    assert loaded["anthropic_api_key"] == "sk-test"
+    assert loaded["work_queue_path"] == "C:/x.md"
+
+
+def test_prompt_saves_entered_key_and_preserves_existing(tmp_path, monkeypatch):
+    import dispatch_hub.menu as menu
+    monkeypatch.setattr(menu, "SETTINGS_FILE", tmp_path / "settings.json")
+    app = _app()
+    settings = {"work_queue_path": "C:/x.md"}
+    # asker returns a padded key; it should be stripped, saved, and returned
+    result = app._prompt_and_save_api_key(settings, asker=lambda: "  sk-entered  ")
+    assert result == "sk-entered"
+    reloaded = app._load_settings()
+    assert reloaded["anthropic_api_key"] == "sk-entered"
+    assert reloaded["work_queue_path"] == "C:/x.md"  # existing setting preserved
+
+
+def test_prompt_blank_key_saves_nothing(tmp_path, monkeypatch):
+    import dispatch_hub.menu as menu
+    settings_file = tmp_path / "settings.json"
+    monkeypatch.setattr(menu, "SETTINGS_FILE", settings_file)
+    app = _app()
+    result = app._prompt_and_save_api_key({"work_queue_path": "C:/x.md"}, asker=lambda: "")
+    assert result is None
+    assert not settings_file.exists()  # cancel writes nothing

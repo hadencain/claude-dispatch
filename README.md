@@ -164,14 +164,17 @@ items are moved to `## In Progress` in the queue file after launch.
 
 1. Set `work_queue_path` in `config/settings.json` to the absolute path of
    your Markdown queue file.
-2. Set the `ANTHROPIC_API_KEY` environment variable, or add
-   `anthropic_api_key` to `config/settings.json` (do not commit this file if
-   it contains a key).
-3. Optionally set `triage_model` in settings (default: `claude-sonnet-4-6`).
+2. Optionally set `triage_model` in settings (default: `claude-sonnet-4-6`).
 
-If the queue path or API key is missing, the action prints a one-line hint
-and returns to the menu. Items with an unresolved directory (not found in the
-discovered project list) block launch until fixed.
+**API key:** the first time you dispatch without a key configured, the tool
+prompts you to paste your Anthropic key (input is masked) and saves it to
+`config/settings.json` — you are not asked again. `config/settings.json` is
+gitignored, so the key never enters the repo. You can also set the
+`ANTHROPIC_API_KEY` environment variable, which overrides the saved key.
+
+If the queue path is missing, the action prints a one-line hint and returns to
+the menu. Items with an unresolved directory (not found in the discovered
+project list) block launch until fixed.
 
 ---
 

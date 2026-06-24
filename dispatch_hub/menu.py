@@ -156,6 +156,40 @@ class App:
                 pass
         return {}
 
+    def _save_settings(self, settings: dict) -> None:
+        SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        SETTINGS_FILE.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+
+    def _prompt_and_save_api_key(self, settings: dict, asker=None) -> str | None:
+        """Prompt once for an Anthropic key and persist it to settings.json.
+
+        Called only when no key resolves from env or settings. The key is
+        stored in config/settings.json (gitignored) so it is entered once and
+        reused on every later run. ``asker`` is injectable for testing;
+        by default it reads a masked line from the terminal.
+        """
+        if asker is None:
+            asker = lambda: questionary.password(
+                "Paste your Anthropic API key (blank to cancel):",
+                style=STYLE, qmark=MARK,
+            ).ask()
+        console.print("[yellow]No Anthropic API key found.[/yellow]")
+        key = asker()
+        if not key or not key.strip():
+            console.print(
+                "[yellow]No key entered; cannot dispatch. Rerun to enter it, "
+                "or set the ANTHROPIC_API_KEY environment variable.[/yellow]"
+            )
+            return None
+        key = key.strip()
+        settings["anthropic_api_key"] = key
+        self._save_settings(settings)
+        console.print(
+            "[green]Saved key to config/settings.json (gitignored). "
+            "You won't be asked again.[/green]"
+        )
+        return key
+
     def dispatch_from_queue(self) -> None:
         settings = self._load_settings()
         queue_path = (settings.get("work_queue_path") or "").strip()
@@ -186,9 +220,10 @@ class App:
 
         try:
             api_key = resolve_api_key(settings)
-        except NoApiKey as exc:
-            console.print(f"[yellow]{exc}[/yellow]")
-            return
+        except NoApiKey:
+            api_key = self._prompt_and_save_api_key(settings)
+            if not api_key:
+                return
 
         client = TriageClient(api_key, settings.get("triage_model") or DEFAULT_MODEL)
         role_names = [r.name for r in self.roles.load()]
