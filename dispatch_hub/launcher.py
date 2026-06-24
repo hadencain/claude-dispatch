@@ -161,6 +161,10 @@ def sweep_stale_scripts(work_dir: Path) -> None:
 
 def launch(profile: Profile, charters: dict[str, str], work_dir: Path,
            runner=subprocess.run):
+    # Resolve to an absolute dir: each pane is spawned with `wt -d <dir>`, so a
+    # relative `-File` path would be looked up under the pane's project dir
+    # (where the script does not exist) rather than here.
+    work_dir = Path(work_dir).resolve()
     sweep_stale_scripts(work_dir)
     paths = write_pane_scripts(profile, charters, work_dir)
     cmd = build_command(profile, [str(p) for p in paths], shell=_resolve_shell())

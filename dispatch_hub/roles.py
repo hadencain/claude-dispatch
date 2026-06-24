@@ -6,52 +6,61 @@ from pathlib import Path
 from .models import Role
 
 
-def roles_from_json(text: str) -> list[Role]:
-    """Parse a JSON role definition (single object or array) into Roles.
-
-    Accepts the shape produced by the role-authoring prompt:
-    `[{"name": ..., "charter": ..., "builtin": false}, ...]`. Imported roles
-    are always treated as custom (builtin=False) so the built-in protection
-    stays meaningful — you don't import built-ins. Raises ValueError on any
-    structurally invalid entry."""
-    data = json.loads(text)
-    if isinstance(data, dict):
-        data = [data]
-    if not isinstance(data, list):
-        raise ValueError("expected a JSON object or array of role objects")
-    roles: list[Role] = []
-    for d in data:
-        if not isinstance(d, dict) or "name" not in d or "charter" not in d:
-            raise ValueError("each role needs a 'name' and a 'charter'")
-        name = str(d["name"]).strip()
-        charter = str(d["charter"]).strip()
-        if not name or not charter:
-            raise ValueError("'name' and 'charter' must be non-empty")
-        roles.append(Role(name=name, charter=charter, builtin=False))
-    return roles
-
 DEFAULT_ROLES: list[Role] = [
     Role("Architect",
          "You are the Architect. Focus on system design, module boundaries, "
          "interfaces, and trade-offs. Propose structure and review designs; do not "
          "write implementation code unless explicitly asked. Push back on premature "
-         "complexity and call out where boundaries are unclear.",
-         builtin=True),
+         "complexity and call out where boundaries are unclear."),
     Role("Backend",
          "You are the Backend engineer. Focus on data models, business logic, APIs, "
          "persistence, and their tests. Implement server-side and core logic. Defer UI "
-         "and styling to the Frontend role and large-scale structure to the Architect.",
-         builtin=True),
+         "and styling to the Frontend role and large-scale structure to the Architect."),
     Role("Frontend",
          "You are the Frontend engineer. Focus on UI, components, layout, state "
          "management, and user-facing behavior. Implement and refine the interface. "
-         "Defer data-model and server-logic decisions to the Backend role.",
-         builtin=True),
+         "Defer data-model and server-logic decisions to the Backend role."),
     Role("QA",
          "You are QA. Focus on testing, edge cases, regressions, and verification. "
          "Write and run tests, reproduce bugs, and report findings precisely with steps "
-         "to reproduce. Do not implement features; verify them and surface gaps.",
-         builtin=True),
+         "to reproduce. Do not implement features; verify them and surface gaps."),
+    Role("Security",
+         "You are the Security engineer. Focus on authentication, authorization, attack "
+         "surfaces, dependency risk, data protection, and secure defaults. Review designs "
+         "and implementations for vulnerabilities, propose mitigations, and validate "
+         "security assumptions. Defer performance tuning to the Performance role, feature "
+         "implementation to Backend and Frontend, and overall system structure to the "
+         "Architect."),
+    Role("Performance",
+         "You are the Performance engineer. Focus on latency, throughput, resource usage, "
+         "scalability, profiling, and bottlenecks. Measure behavior, identify constraints, "
+         "benchmark alternatives, and recommend optimizations backed by evidence. Defer "
+         "correctness verification to QA, security concerns to Security, and system-wide "
+         "design decisions to the Architect."),
+    Role("Data",
+         "You are the Data engineer. Focus on schemas, migrations, storage strategy, query "
+         "behavior, data quality, and lifecycle management. Design and review data "
+         "structures, persistence patterns, and migration plans. Defer API behavior and "
+         "business rules to Backend, infrastructure concerns to DevOps, and system-wide "
+         "structure to the Architect."),
+    Role("DevOps",
+         "You are the DevOps engineer. Focus on deployment, environments, automation, "
+         "observability, reliability, and operational workflows. Design and maintain build "
+         "pipelines, monitoring, release processes, and operational safeguards. Defer "
+         "application logic to Backend, infrastructure architecture to the Architect, and "
+         "security review to Security."),
+    Role("Docs",
+         "You are the Docs engineer. Focus on documentation, onboarding, developer "
+         "experience, operational guides, and knowledge transfer. Write and maintain clear "
+         "references, tutorials, decision records, and usage guidance. Defer feature "
+         "implementation to Backend and Frontend, design ownership to the Architect, and "
+         "correctness verification to QA."),
+    Role("Research",
+         "You are the Research engineer. Focus on technical investigation, dependency "
+         "evaluation, feasibility analysis, trade-offs, and unknowns. Explore alternatives, "
+         "gather evidence, compare approaches, and summarize findings for decision-making. "
+         "Defer final architectural choices to the Architect, implementation to Backend and "
+         "Frontend, and verification to QA."),
 ]
 
 
@@ -93,23 +102,3 @@ class RoleStore:
         else:
             roles.append(role)
         self.save(roles)
-
-    def delete(self, name: str) -> None:
-        self.save([r for r in self.load() if r.name != name])
-
-    def import_roles(self, roles: list[Role]) -> tuple[int, int]:
-        """Bulk add/replace roles by name in a single load+save.
-        Returns (added, updated) counts."""
-        current = self.load()
-        index = {r.name: i for i, r in enumerate(current)}
-        added = updated = 0
-        for r in roles:
-            if r.name in index:
-                current[index[r.name]] = r
-                updated += 1
-            else:
-                index[r.name] = len(current)
-                current.append(r)
-                added += 1
-        self.save(current)
-        return added, updated

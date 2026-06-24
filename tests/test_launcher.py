@@ -147,3 +147,22 @@ def test_launch_invokes_runner_with_wt_command(tmp_path):
     assert result == "ran"
     assert captured["cmd"][0] == "wt.exe"
     assert "new-tab" in captured["cmd"]
+
+
+def test_launch_passes_absolute_script_paths(tmp_path, monkeypatch):
+    # With a relative work_dir, the -File path must still be absolute, or
+    # `wt -d <pane dir>` makes PowerShell look for the script under the pane's
+    # project directory instead of here (the original launch bug).
+    monkeypatch.chdir(tmp_path)
+    prof = Profile.new("p", "horizontal", [Pane("C:/a", None, "go")])
+    captured = {}
+
+    def fake_runner(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return None
+
+    launch(prof, {}, Path("config/.launch"), runner=fake_runner)
+    cmd = captured["cmd"]
+    script = cmd[cmd.index("-File") + 1]
+    assert Path(script).is_absolute()
+    assert Path(script).exists()
