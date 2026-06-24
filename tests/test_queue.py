@@ -55,3 +55,23 @@ def test_move_to_in_progress_preserves_done_and_untouched_bullets():
 def test_move_to_in_progress_skips_unmatched_line():
     out = move_to_in_progress(SAMPLE, ["- not in the file"], "2026-06-24")
     assert out == SAMPLE  # nothing matched => nothing changed
+
+
+def test_move_to_in_progress_preserves_crlf_line_endings():
+    crlf = SAMPLE.replace("\n", "\r\n")
+    out = move_to_in_progress(crlf, ["- voice formant replicator/visualizer"], "2026-06-24")
+    # the rewrite keeps Windows line endings and introduces no bare \n
+    assert "\r\n" in out
+    assert "\n" not in out.replace("\r\n", "")
+    assert "- voice formant replicator/visualizer (dispatched 2026-06-24)" in out
+
+
+def test_move_to_in_progress_creates_header_when_in_progress_absent():
+    text = "## Queued\n\n- lone task\n"
+    out = move_to_in_progress(text, ["- lone task"], "2026-06-24")
+    # a fresh In Progress header is appended with the dated, relocated line
+    assert "## In Progress" in out
+    in_progress = out.split("## In Progress")[1]
+    assert "- lone task (dispatched 2026-06-24)" in in_progress
+    # and it is gone from the Queued section
+    assert "- lone task\n" not in out.split("## In Progress")[0]
