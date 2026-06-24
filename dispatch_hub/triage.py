@@ -57,7 +57,7 @@ def parse_response(text: str, items: list[str], role_names: list[str],
         idx = int(obj["item_index"])
         item_text = items[idx]
         raw_role = obj.get("role")
-        role = raw_role if raw_role in role_set else None
+        role = None if raw_role == NONE_ROLE or raw_role not in role_set else raw_role
         directory = obj.get("directory", "")
         prompt = (obj.get("startup_prompt") or "").strip() or item_text
         props.append(Proposal(
@@ -81,6 +81,6 @@ def classify(items: list[str], role_names: list[str], directories: list[str],
         text = client.complete(SYSTEM_PROMPT, payload)
         try:
             return parse_response(text, items, role_names, directories)
-        except (json.JSONDecodeError, KeyError, ValueError, TypeError) as exc:
+        except (json.JSONDecodeError, KeyError, ValueError, TypeError, IndexError) as exc:
             last_error = exc
     raise ValueError(f"Triage returned unparseable output: {last_error}")

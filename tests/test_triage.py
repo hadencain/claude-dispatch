@@ -31,6 +31,11 @@ def test_parse_unknown_role_becomes_none():
     assert props[0].role is None
 
 
+def test_parse_none_role_string_becomes_none():
+    props = parse_response(_canned("(none)", "C:/ship/spotter"), ITEMS, ROLES, DIRS)
+    assert props[0].role is None
+
+
 def test_parse_unknown_directory_flags_unresolved():
     props = parse_response(_canned("QA", "C:/nope"), ITEMS, ROLES, DIRS)
     assert props[0].unresolved is True
