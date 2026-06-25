@@ -84,3 +84,45 @@ def test_prompt_blank_key_saves_nothing(tmp_path, monkeypatch):
     result = app._prompt_and_save_api_key({"work_queue_path": "C:/x.md"}, asker=lambda: "")
     assert result is None
     assert not settings_file.exists()  # cancel writes nothing
+
+
+class _FakeCheckbox:
+    def __init__(self, result):
+        self._result = result
+
+    def ask(self):
+        return self._result
+
+
+def _dispatch_app_with_queue(tmp_path, monkeypatch, checkbox_result):
+    """An App whose dispatch reads a real temp queue and whose checkbox
+    returns ``checkbox_result``. classify is stubbed and flagged if called."""
+    import dispatch_hub.menu as menu
+    q = tmp_path / "Q.md"
+    q.write_text("## Queued\n\n- some task\n", encoding="utf-8")
+    app = _app()
+    monkeypatch.setattr(app, "_load_settings", lambda: {"work_queue_path": str(q)})
+    monkeypatch.setattr(menu.questionary, "checkbox",
+                        lambda *a, **k: _FakeCheckbox(checkbox_result))
+    flags = {"triage": False}
+    monkeypatch.setattr(menu, "classify",
+                        lambda *a, **k: flags.__setitem__("triage", True) or [])
+    return app, flags
+
+
+def test_dispatch_warns_when_nothing_selected(tmp_path, monkeypatch, capsys):
+    # Enter pressed with nothing toggled -> questionary returns []
+    app, flags = _dispatch_app_with_queue(tmp_path, monkeypatch, [])
+    app.dispatch_from_queue()
+    assert flags["triage"] is False        # no dispatch
+    out = capsys.readouterr().out
+    assert "Space" in out                  # tells the user how to actually select
+
+
+def test_dispatch_silent_on_cancel(tmp_path, monkeypatch, capsys):
+    # Esc / Ctrl-C -> questionary returns None; cancelling should not nag
+    app, flags = _dispatch_app_with_queue(tmp_path, monkeypatch, None)
+    app.dispatch_from_queue()
+    assert flags["triage"] is False
+    out = capsys.readouterr().out
+    assert "Space" not in out

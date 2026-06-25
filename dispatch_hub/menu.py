@@ -213,9 +213,18 @@ class App:
         chosen = questionary.checkbox(
             "Select items to dispatch:",
             choices=[questionary.Choice(it.text, value=it) for it in items],
+            instruction="(↑/↓ move · Space to select · Enter to confirm)",
             style=STYLE, qmark=MARK,
         ).ask()
+        if chosen is None:
+            return  # Esc / Ctrl-C — cancelled, no message
         if not chosen:
+            # Enter pressed with nothing toggled. A checkbox does not select the
+            # highlighted row on Enter, so this is the easy mistake to make.
+            console.print(
+                "[yellow]No items selected. Highlight an item and press [bold]Space[/bold] "
+                "to select it, then [bold]Enter[/bold] to dispatch.[/yellow]"
+            )
             return
 
         try:
