@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
 from .models import UsageEvent
@@ -62,10 +62,9 @@ class Aggregator:
         if event.request_id:
             self._seen.add(event.request_id)
 
-        c = cost(event, web_search_usd_per_1k).total
-        if event.model not in self._project_cost and _is_unpriced(event):
-            self._unpriced.add(event.model)
-        elif _is_unpriced(event):
+        breakdown = cost(event, web_search_usd_per_1k)
+        c = breakdown.total
+        if breakdown.unpriced:
             self._unpriced.add(event.model)
 
         acc = self._sessions.get(event.session_id)
@@ -131,7 +130,3 @@ class Aggregator:
             this_month=sum(v for d, v in self._day_cost.items() if d.startswith(month_prefix)),
             active_count=len(self.active_sessions(now, window_seconds)),
         )
-
-
-def _is_unpriced(event: UsageEvent) -> bool:
-    return cost(event).unpriced
