@@ -8,3 +8,5 @@ config/roles.json
 config/settings.json
 scratch/
 *.lnk
+
+.superpowers/
