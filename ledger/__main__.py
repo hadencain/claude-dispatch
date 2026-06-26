@@ -78,14 +78,19 @@ def main(argv: list[str] | None = None) -> int:
     console = Console(file=out)
 
     console.print("[dim]scanning transcript history…[/dim]")
-    _cold_scan(agg, cache, root, config)
 
     if args.once:
+        _cold_scan(agg, cache, root, config)
         console.print(render_dashboard(build_state(agg, config, datetime.now(timezone.utc))))
         return 0
 
+    # Live path: prime the watcher to current EOF FIRST, then cold-scan history.
+    # Any line appended during the cold scan is re-read by the first poll (from the
+    # primed offset) and absorbed by the aggregator's requestId dedup — no lost update.
     watcher = Watcher()
     watcher.prime(root)
+    _cold_scan(agg, cache, root, config)
+
     notifier = Notifier(Path.home() / ".ledger" / "alerts.log")
     crossings = CrossingTracker()
 

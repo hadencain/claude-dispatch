@@ -26,7 +26,8 @@ class Watcher:
             fh.seek(offset)
             chunk = fh.read(size - offset)
         nl = chunk.rfind(b"\n")
-        if nl == -1:               # no complete line yet — hold
+        if nl == -1:               # no complete line yet — hold, but remember the file
+            self._offsets[key] = offset
             return []
         complete = chunk[: nl + 1]
         self._offsets[key] = offset + len(complete)
