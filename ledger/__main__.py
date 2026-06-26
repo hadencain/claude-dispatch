@@ -1,0 +1,105 @@
+# ledger/__main__.py
+from __future__ import annotations
+
+import argparse
+import io
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+from rich.console import Console
+from rich.live import Live
+
+from .aggregate import Aggregator
+from .budget import CrossingTracker, evaluate
+from .cache import ParseCache
+from .config import Config, default_config_path, load
+from .models import UsageEvent
+from .notify import Notifier
+from .resources import ai_processes, gpu_processes, gpu_snapshot, system_snapshot
+from .transcripts import (default_projects_root, iter_transcript_files,
+                          parse_file, project_label)
+from .tui import DashboardState, render_dashboard
+from .watch import Watcher
+
+try:
+    import psutil as _psutil
+except ImportError:
+    _psutil = None
+
+_TICK_SECONDS = 1.5
+
+
+def build_state(agg: Aggregator, config: Config, now: datetime,
+                run=subprocess.run, ps=_psutil) -> DashboardState:
+    gpu = gpu_snapshot(run=run)
+    gpu_pids = gpu_processes(run=run)
+    system = system_snapshot(ps=ps)
+    project_dirs: set[str] = set()  # populated by the live loop; empty in --once is fine
+    procs = ai_processes(config.ai_process_names, project_dirs, gpu_pids, ps=ps)
+    today = now.date()
+    report = evaluate(
+        agg.totals(today, now, config.active_window_seconds).today,
+        agg.session_costs(), config.daily_usd_budget,
+        config.per_session_usd_budget, config.warn_ratio,
+    )
+    return DashboardState(
+        totals=agg.totals(today, now, config.active_window_seconds),
+        sessions=agg.active_sessions(now, config.active_window_seconds),
+        projects=agg.projects(today),
+        day_costs=agg.day_costs(),
+        gpu=gpu, system=system, procs=procs, budget=report,
+        unpriced=agg.unpriced_models(), history_days=config.history_days,
+    )
+
+
+def _cold_scan(agg: Aggregator, cache: ParseCache, root: Path, config: Config) -> None:
+    for file in iter_transcript_files(root):
+        for event in cache.get_or_parse(file, project_label(file), parse_file):
+            agg.add(event, config.web_search_usd_per_1k)
+    cache.save()
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="ledger")
+    parser.add_argument("--once", action="store_true",
+                        help="render a single frame and exit")
+    args = parser.parse_args(argv)
+
+    config = load(default_config_path())
+    root = default_projects_root()
+    cache = ParseCache(Path.home() / ".ledger" / "parse-cache.json")
+    agg = Aggregator()
+    # Force UTF-8 on Windows to handle sparkline block characters (▁▂▃▄▅▆▇)
+    # that can't be encoded in cp1252 by the legacy Windows console renderer.
+    out = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    console = Console(file=out)
+
+    console.print("[dim]scanning transcript history…[/dim]")
+    _cold_scan(agg, cache, root, config)
+
+    if args.once:
+        console.print(render_dashboard(build_state(agg, config, datetime.now(timezone.utc))))
+        return 0
+
+    watcher = Watcher()
+    watcher.prime(root)
+    notifier = Notifier(Path.home() / ".ledger" / "alerts.log")
+    crossings = CrossingTracker()
+
+    with Live(console=console, screen=True, auto_refresh=False) as live:
+        while True:
+            for event in watcher.poll(root):
+                agg.add(event, config.web_search_usd_per_1k)
+            now = datetime.now(timezone.utc)
+            state = build_state(agg, config, now)
+            if config.notify:
+                notifier.emit(crossings.check(state.budget))
+            live.update(render_dashboard(state), refresh=True)
+            time.sleep(_TICK_SECONDS)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
