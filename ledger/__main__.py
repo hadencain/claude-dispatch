@@ -16,7 +16,6 @@ from .aggregate import Aggregator
 from .budget import CrossingTracker, evaluate
 from .cache import ParseCache
 from .config import Config, default_config_path, load
-from .models import UsageEvent
 from .notify import Notifier
 from .resources import ai_processes, gpu_processes, gpu_snapshot, system_snapshot
 from .transcripts import (default_projects_root, iter_transcript_files,
@@ -37,16 +36,17 @@ def build_state(agg: Aggregator, config: Config, now: datetime,
     gpu = gpu_snapshot(run=run)
     gpu_pids = gpu_processes(run=run)
     system = system_snapshot(ps=ps)
-    project_dirs: set[str] = set()  # populated by the live loop; empty in --once is fine
+    project_dirs: set[str] = set()  # v1: per-process project attribution is best-effort; left empty here (see spec). Renders "—".
     procs = ai_processes(config.ai_process_names, project_dirs, gpu_pids, ps=ps)
     today = now.date()
+    totals = agg.totals(today, now, config.active_window_seconds)
     report = evaluate(
-        agg.totals(today, now, config.active_window_seconds).today,
+        totals.today,
         agg.session_costs(), config.daily_usd_budget,
         config.per_session_usd_budget, config.warn_ratio,
     )
     return DashboardState(
-        totals=agg.totals(today, now, config.active_window_seconds),
+        totals=totals,
         sessions=agg.active_sessions(now, config.active_window_seconds),
         projects=agg.projects(today),
         day_costs=agg.day_costs(),
@@ -89,16 +89,19 @@ def main(argv: list[str] | None = None) -> int:
     notifier = Notifier(Path.home() / ".ledger" / "alerts.log")
     crossings = CrossingTracker()
 
-    with Live(console=console, screen=True, auto_refresh=False) as live:
-        while True:
-            for event in watcher.poll(root):
-                agg.add(event, config.web_search_usd_per_1k)
-            now = datetime.now(timezone.utc)
-            state = build_state(agg, config, now)
-            if config.notify:
-                notifier.emit(crossings.check(state.budget))
-            live.update(render_dashboard(state), refresh=True)
-            time.sleep(_TICK_SECONDS)
+    try:
+        with Live(console=console, screen=True, auto_refresh=False) as live:
+            while True:
+                for event in watcher.poll(root):
+                    agg.add(event, config.web_search_usd_per_1k)
+                now = datetime.now(timezone.utc)
+                state = build_state(agg, config, now)
+                if config.notify:
+                    notifier.emit(crossings.check(state.budget))
+                live.update(render_dashboard(state), refresh=True)
+                time.sleep(_TICK_SECONDS)
+    except KeyboardInterrupt:
+        return 0
 
 
 if __name__ == "__main__":
