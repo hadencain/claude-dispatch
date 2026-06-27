@@ -27,6 +27,7 @@ class DashboardState:
     procs: list[ProcRow]
     budget: BudgetReport
     history_days: int
+    show_resources: bool = True
 
 
 def _age(ts: datetime, now: datetime) -> str:
@@ -109,17 +110,21 @@ def _footer(state: DashboardState) -> Text:
     day = state.budget.day_state
     msg = Text(f"budget: today {day}", style=_STATE_COLOR.get(day, "white"))
     msg.append("   ·   usage = weighted tokens (out×5, in×1, cache-read×0.1)", style="dim")
+    if not state.show_resources:
+        msg.append("   ·   resources hidden (idle)", style="dim")
     msg.append("   ·   q quit", style="dim")
     return msg
 
 
 def render_dashboard(state: DashboardState) -> Group:
     now = datetime.now(timezone.utc)
-    return Group(
+    parts = [
         _header(state.totals),
         _sessions_panel(state, now),
         _projects_panel(state),
         _history_panel(state),
-        _resources_panel(state),
-        _footer(state),
-    )
+    ]
+    if state.show_resources:
+        parts.append(_resources_panel(state))
+    parts.append(_footer(state))
+    return Group(*parts)

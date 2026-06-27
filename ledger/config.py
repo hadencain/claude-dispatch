@@ -17,6 +17,10 @@ class Config:
         default_factory=lambda: ["node", "claude", "python", "ollama"])
     history_days: int = 14
     active_window_seconds: int = 600
+    # Resources panel: "auto" shows it only when the GPU is busy or an AI process
+    # is working hard (it reads ~zero for API-only Claude sessions); "always"/"never"
+    # force it.
+    show_resources: str = "auto"
 
 
 def default_config_path() -> Path:

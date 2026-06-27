@@ -29,6 +29,19 @@ except ImportError:
     _psutil = None
 
 _TICK_SECONDS = 1.5
+# An AI process at or above this CPU% counts as "working hard" for the auto
+# resources gate (catches CPU-bound local inference, not just GPU load).
+_BUSY_CPU = 25.0
+
+
+def _show_resources(mode: str, gpu, gpu_pids: dict, procs: list) -> bool:
+    if mode == "always":
+        return True
+    if mode == "never":
+        return False
+    gpu_busy = bool(gpu_pids) or (gpu is not None and gpu.util > 0)
+    cpu_busy = any(p.cpu >= _BUSY_CPU for p in procs)
+    return gpu_busy or cpu_busy
 
 
 def build_state(agg: Aggregator, config: Config, now: datetime,
@@ -51,6 +64,7 @@ def build_state(agg: Aggregator, config: Config, now: datetime,
         day_usage=agg.day_usage(),
         gpu=gpu, system=system, procs=procs, budget=report,
         history_days=config.history_days,
+        show_resources=_show_resources(config.show_resources, gpu, gpu_pids, procs),
     )
 
 
