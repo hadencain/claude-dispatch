@@ -15,7 +15,7 @@ def test_render_dashboard_returns_renderable_without_error():
         day_usage={"2026-06-25": 2_000_000.0},
         gpu=GpuSnapshot(0, 0, 4096, 41),
         system=SystemSnapshot(14.0, 9_000_000_000, 32_000_000_000),
-        procs=[ProcRow("node", 1, 3.1, 412_000_000, 0, "proj")],
+        procs=[ProcRow("node", 1, 3.1, 412_000_000, 0)],
         budget=BudgetReport(day_state=OK, session_states={"s1": OK}),
         history_days=14,
     )

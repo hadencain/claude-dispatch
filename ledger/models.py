@@ -29,19 +29,3 @@ class UsageEvent:
         d = dict(d)
         d["timestamp"] = datetime.fromisoformat(d["timestamp"])
         return cls(**d)
-
-
-@dataclass(frozen=True)
-class CostBreakdown:
-    input: float = 0.0
-    output: float = 0.0
-    cache_read: float = 0.0
-    cache_write_5m: float = 0.0
-    cache_write_1h: float = 0.0
-    web: float = 0.0
-    unpriced: bool = False
-
-    @property
-    def total(self) -> float:
-        return (self.input + self.output + self.cache_read
-                + self.cache_write_5m + self.cache_write_1h + self.web)

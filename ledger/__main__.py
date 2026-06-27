@@ -36,8 +36,7 @@ def build_state(agg: Aggregator, config: Config, now: datetime,
     gpu = gpu_snapshot(run=run)
     gpu_pids = gpu_processes(run=run)
     system = system_snapshot(ps=ps)
-    project_dirs: set[str] = set()  # v1: per-process project attribution is best-effort; left empty here (see spec). Renders "—".
-    procs = ai_processes(config.ai_process_names, project_dirs, gpu_pids, ps=ps)
+    procs = ai_processes(config.ai_process_names, gpu_pids, ps=ps)
     today = now.date()
     totals = agg.totals(today, now, config.active_window_seconds)
     report = evaluate(

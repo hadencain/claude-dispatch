@@ -97,11 +97,11 @@ def _resources_panel(state: DashboardState) -> Panel:
         f"RAM {sys.ram_used // 1_000_000_000}/{sys.ram_total // 1_000_000_000}G  {gpu_line}"
     )
     table = Table(expand=True)
-    for col in ("name", "pid", "cpu", "ram(M)", "vram(M)", "project"):
+    for col in ("name", "pid", "cpu", "ram(M)", "vram(M)"):
         table.add_column(col)
     for p in state.procs[:10]:
         table.add_row(p.name, str(p.pid), f"{p.cpu:.0f}%",
-                      str(p.ram // 1_000_000), str(p.vram), p.project or "—")
+                      str(p.ram // 1_000_000), str(p.vram))
     return Panel(Group(head, table), title="Resources")
 
 

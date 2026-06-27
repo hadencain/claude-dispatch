@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from ledger.models import CostBreakdown, UsageEvent
+from ledger.models import UsageEvent
 
 
 def _event() -> UsageEvent:
@@ -16,10 +16,3 @@ def _event() -> UsageEvent:
 def test_usage_event_roundtrips_through_dict():
     e = _event()
     assert UsageEvent.from_dict(e.to_dict()) == e
-
-
-def test_cost_breakdown_total_sums_dollar_fields():
-    c = CostBreakdown(input=1.0, output=2.0, cache_read=0.5,
-                      cache_write_5m=0.25, cache_write_1h=0.25, web=1.0)
-    assert c.total == 5.0
-    assert c.unpriced is False

@@ -31,7 +31,6 @@ class ProcRow:
     cpu: float
     ram: int
     vram: int
-    project: str | None
 
 
 _GPU_QUERY = [
@@ -92,8 +91,8 @@ def system_snapshot(ps=_psutil) -> SystemSnapshot:
     return SystemSnapshot(ps.cpu_percent(interval=None), vm.used, vm.total)
 
 
-def ai_processes(names: list[str], project_dirs: set[str],
-                 gpu_pids: dict[int, int], ps=_psutil) -> list[ProcRow]:
+def ai_processes(names: list[str], gpu_pids: dict[int, int],
+                 ps=_psutil) -> list[ProcRow]:
     wanted = {n.lower() for n in names}
     rows: list[ProcRow] = []
     for proc in ps.process_iter(["pid", "name", "cpu_percent", "memory_info"]):
@@ -102,11 +101,6 @@ def ai_processes(names: list[str], project_dirs: set[str],
             name = (info.get("name") or "").lower()
             if not any(w in name for w in wanted):
                 continue
-            try:
-                cwd = proc.cwd()
-            except Exception:
-                cwd = ""
-            project = next((d for d in project_dirs if cwd and cwd.startswith(d)), None)
             mem = info.get("memory_info")
             rows.append(ProcRow(
                 name=info.get("name") or "",
@@ -114,7 +108,6 @@ def ai_processes(names: list[str], project_dirs: set[str],
                 cpu=info.get("cpu_percent") or 0.0,
                 ram=mem.rss if mem else 0,
                 vram=gpu_pids.get(info.get("pid", 0), 0),
-                project=project,
             ))
         except Exception:
             continue
