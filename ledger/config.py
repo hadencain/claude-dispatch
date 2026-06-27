@@ -7,13 +7,14 @@ from pathlib import Path
 
 @dataclass
 class Config:
-    daily_usd_budget: float = 20.0
-    per_session_usd_budget: float = 5.0
+    # Usage-unit budgets (weighted tokens). 0 = disabled — set a ceiling to get
+    # warn/over alerts. There's no sane default unit threshold, so off by default.
+    daily_usage_budget: float = 0.0
+    per_session_usage_budget: float = 0.0
     warn_ratio: float = 0.8
     notify: bool = True
     ai_process_names: list[str] = field(
         default_factory=lambda: ["node", "claude", "python", "ollama"])
-    web_search_usd_per_1k: float = 10.0
     history_days: int = 14
     active_window_seconds: int = 600
 

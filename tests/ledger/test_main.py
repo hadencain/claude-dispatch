@@ -35,6 +35,6 @@ def test_build_state_assembles_snapshot():
     ))
     state = build_state(agg, Config(), datetime(2026, 6, 25, 12, tzinfo=timezone.utc),
                         run=_fake_run, ps=_fake_ps())
-    assert state.totals.all_time == 5.0
+    assert state.totals.all_time == 1_000_000  # 1M input tokens x weight 1.0
     assert state.gpu is not None
     assert len(state.sessions) == 1

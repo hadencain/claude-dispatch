@@ -493,6 +493,13 @@ class App:
 
     def run(self) -> None:
         print_splash(console)
+        # Glance at Claude usage from the standalone ledger package. Guarded so a
+        # ledger import/scan failure can never block the launcher.
+        try:
+            from ledger.summary import usage_panel
+            console.print(usage_panel())
+        except Exception:
+            pass
         actions = {
             "Launch session": self.launch_session,
             "Create session": self.create_session,

@@ -10,9 +10,9 @@ from rich.text import Text
 
 from .aggregate import ProjectRollup, SessionRollup, Totals
 from .budget import OK, OVER, WARN, BudgetReport
+from .format import bar, short_project, sparkline, units
 from .resources import GpuSnapshot, ProcRow, SystemSnapshot
 
-_BLOCKS = " ▁▂▃▄▅▆▇█"
 _STATE_COLOR = {OK: "green", WARN: "yellow", OVER: "red"}
 
 
@@ -21,30 +21,12 @@ class DashboardState:
     totals: Totals
     sessions: list[SessionRollup]
     projects: list[ProjectRollup]
-    day_costs: dict[str, float]
+    day_usage: dict[str, float]
     gpu: GpuSnapshot | None
     system: SystemSnapshot
     procs: list[ProcRow]
     budget: BudgetReport
-    unpriced: set[str]
     history_days: int
-
-
-def sparkline(values: list[float]) -> str:
-    if not values:
-        return ""
-    hi = max(values)
-    if hi <= 0:
-        return _BLOCKS[0] * len(values)
-    out = []
-    for v in values:
-        idx = int(v / hi * (len(_BLOCKS) - 1))
-        out.append(_BLOCKS[idx])
-    return "".join(out)
-
-
-def _money(v: float) -> str:
-    return f"${v:,.2f}"
 
 
 def _age(ts: datetime, now: datetime) -> str:
@@ -58,22 +40,22 @@ def _age(ts: datetime, now: datetime) -> str:
 
 def _header(t: Totals) -> Text:
     return Text(
-        f"ledger    all-time {_money(t.all_time)}   today {_money(t.today)}   "
-        f"this-month {_money(t.this_month)}   active {t.active_count}",
+        f"ledger    today {units(t.today)} units   this-week {units(t.this_week)} units   "
+        f"all-time {units(t.all_time)} units   active {t.active_count}",
         style="bold",
     )
 
 
 def _sessions_panel(state: DashboardState, now: datetime) -> Panel:
     table = Table(expand=True)
-    for col in ("session", "project", "model", "in", "out", "cache", "$", "state", "age"):
+    for col in ("session", "project", "model", "in", "out", "cache", "usage", "state", "age"):
         table.add_column(col)
     for s in state.sessions[:12]:
         state_str = state.budget.session_states.get(s.session_id, OK)
         table.add_row(
-            s.session_id[:6], s.project[-24:], s.model.replace("claude-", ""),
+            s.session_id[:6], short_project(s.project), s.model.replace("claude-", ""),
             f"{s.input_tokens:,}", f"{s.output_tokens:,}", f"{s.cache_tokens:,}",
-            _money(s.cost),
+            units(s.usage),
             Text(state_str, style=_STATE_COLOR.get(state_str, "white")),
             _age(s.last_activity, now),
         )
@@ -81,20 +63,25 @@ def _sessions_panel(state: DashboardState, now: datetime) -> Panel:
 
 
 def _projects_panel(state: DashboardState) -> Panel:
+    total = sum(p.all_time for p in state.projects) or 1.0
     table = Table(expand=True)
     table.add_column("project")
-    table.add_column("all-time")
-    table.add_column("today")
+    table.add_column("usage")
+    table.add_column("share")
     for p in state.projects[:8]:
-        table.add_row(p.project[-28:], _money(p.all_time), _money(p.today))
-    return Panel(table, title="Projects")
+        frac = p.all_time / total
+        table.add_row(
+            short_project(p.project), units(p.all_time),
+            f"{frac * 100:4.0f}%  {bar(frac)}",
+        )
+    return Panel(table, title="Projects (share of all usage)")
 
 
 def _history_panel(state: DashboardState) -> Panel:
-    days = sorted(state.day_costs)[-state.history_days:]
-    values = [state.day_costs[d] for d in days]
-    today = _money(values[-1]) if values else "$0.00"
-    body = Text(f"{sparkline(values)}   {today} today")
+    days = sorted(state.day_usage)[-state.history_days:]
+    values = [state.day_usage[d] for d in days]
+    today = units(values[-1]) if values else "0"
+    body = Text(f"{sparkline(values)}   {today} units today")
     return Panel(body, title=f"Last {state.history_days} days")
 
 
@@ -121,8 +108,7 @@ def _resources_panel(state: DashboardState) -> Panel:
 def _footer(state: DashboardState) -> Text:
     day = state.budget.day_state
     msg = Text(f"budget: today {day}", style=_STATE_COLOR.get(day, "white"))
-    if state.unpriced:
-        msg.append(f"   ·   {len(state.unpriced)} unpriced model(s)", style="yellow")
+    msg.append("   ·   usage = weighted tokens (out×5, in×1, cache-read×0.1)", style="dim")
     msg.append("   ·   q quit", style="dim")
     return msg
 

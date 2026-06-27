@@ -18,7 +18,8 @@ def test_duplicate_request_id_counted_once():
     agg = Aggregator()
     assert agg.add(_event(request_id="dup")) is True
     assert agg.add(_event(request_id="dup")) is False
-    assert agg.totals(date(2026, 6, 25), datetime(2026, 6, 25, 12, tzinfo=timezone.utc), 600).all_time == 5.0
+    # 1M input tokens x weight 1.0 = 1,000,000 usage units, counted once.
+    assert agg.totals(date(2026, 6, 25), datetime(2026, 6, 25, 12, tzinfo=timezone.utc), 600).all_time == 1_000_000
 
 
 def test_empty_request_id_not_deduped():
@@ -37,8 +38,9 @@ def test_active_sessions_within_window():
     assert [s.session_id for s in active] == ["recent"]
 
 
-def test_unpriced_model_tracked_and_excluded_from_dollars():
+def test_unknown_model_still_counted():
+    # Usage units are model-agnostic, so an unrecognized model is still counted
+    # (unlike the old dollar pricing, which excluded unpriced models).
     agg = Aggregator()
     agg.add(_event(request_id="u", model="claude-future-9"))
-    assert agg.unpriced_models() == {"claude-future-9"}
-    assert agg.totals(date(2026, 6, 25), datetime(2026, 6, 25, 12, tzinfo=timezone.utc), 600).all_time == 0.0
+    assert agg.totals(date(2026, 6, 25), datetime(2026, 6, 25, 12, tzinfo=timezone.utc), 600).all_time == 1_000_000

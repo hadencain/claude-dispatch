@@ -42,23 +42,23 @@ def build_state(agg: Aggregator, config: Config, now: datetime,
     totals = agg.totals(today, now, config.active_window_seconds)
     report = evaluate(
         totals.today,
-        agg.session_costs(), config.daily_usd_budget,
-        config.per_session_usd_budget, config.warn_ratio,
+        agg.session_usage(), config.daily_usage_budget,
+        config.per_session_usage_budget, config.warn_ratio,
     )
     return DashboardState(
         totals=totals,
         sessions=agg.active_sessions(now, config.active_window_seconds),
         projects=agg.projects(today),
-        day_costs=agg.day_costs(),
+        day_usage=agg.day_usage(),
         gpu=gpu, system=system, procs=procs, budget=report,
-        unpriced=agg.unpriced_models(), history_days=config.history_days,
+        history_days=config.history_days,
     )
 
 
-def _cold_scan(agg: Aggregator, cache: ParseCache, root: Path, config: Config) -> None:
+def _cold_scan(agg: Aggregator, cache: ParseCache, root: Path) -> None:
     for file in iter_transcript_files(root):
         for event in cache.get_or_parse(file, project_label(file), parse_file):
-            agg.add(event, config.web_search_usd_per_1k)
+            agg.add(event)
     cache.save()
 
 
@@ -80,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
     console.print("[dim]scanning transcript history…[/dim]")
 
     if args.once:
-        _cold_scan(agg, cache, root, config)
+        _cold_scan(agg, cache, root)
         console.print(render_dashboard(build_state(agg, config, datetime.now(timezone.utc))))
         return 0
 
@@ -89,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     # primed offset) and absorbed by the aggregator's requestId dedup — no lost update.
     watcher = Watcher()
     watcher.prime(root)
-    _cold_scan(agg, cache, root, config)
+    _cold_scan(agg, cache, root)
 
     notifier = Notifier(Path.home() / ".ledger" / "alerts.log")
     crossings = CrossingTracker()
@@ -98,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:
         with Live(console=console, screen=True, auto_refresh=False) as live:
             while True:
                 for event in watcher.poll(root):
-                    agg.add(event, config.web_search_usd_per_1k)
+                    agg.add(event)
                 now = datetime.now(timezone.utc)
                 state = build_state(agg, config, now)
                 if config.notify:
