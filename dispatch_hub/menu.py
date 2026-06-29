@@ -195,6 +195,56 @@ class App:
         )
         return key
 
+    def _create_proposed_dirs(self, proposals: list[Proposal], root: Path) -> None:
+        """For each new-project proposal, interactively confirm and create its
+        directory, setting ``proposal.directory`` to the created path. A skipped
+        proposal is marked unresolved so the existing launch guard blocks it.
+        Non-new proposals are left untouched.
+        """
+        for prop in proposals:
+            if not prop.is_new_project:
+                continue
+            name = prop.new_dir_slug or sanitize_dirname(prop.item_text)
+            parent = root if prop.suggested_parent in ("", ".") else root / prop.suggested_parent
+            while True:
+                target = target_path(parent, name)
+                console.print(f"[cyan]New project for:[/cyan] {prop.item_text}")
+                action = ask_select(
+                    f"Proposed directory: {target}",
+                    choices=[
+                        questionary.Choice("Create it", "create"),
+                        questionary.Choice("Rename folder", "rename"),
+                        questionary.Choice("Change parent folder", "parent"),
+                        questionary.Choice("Skip (leave unresolved)", "skip"),
+                    ],
+                )
+                if action in (None, "skip"):
+                    prop.unresolved = True
+                    break
+                if action == "rename":
+                    typed = ask_text("Folder name:", default=name)
+                    if typed and typed.strip():
+                        name = typed.strip()
+                    continue
+                if action == "parent":
+                    picked = self._pick_parent(root)
+                    if picked is not BACK:
+                        parent = Path(picked)
+                    continue
+                err = validate_new_dir(parent, name, root)
+                if err:
+                    console.print(f"[red]{err}[/red]")
+                    continue
+                try:
+                    create_directory(target)
+                except OSError as exc:
+                    console.print(f"[red]Could not create {target}: {exc}[/red]")
+                    continue
+                prop.directory = target.as_posix()
+                self._projects.append(target)
+                console.print(f"[green]Created {target}.[/green]")
+                break
+
     def dispatch_from_queue(self) -> None:
         settings = self._load_settings()
         queue_path = (settings.get("work_queue_path") or "").strip()
@@ -245,12 +295,15 @@ class App:
         if self._projects is None:
             self._projects = discover_projects(root)
         directories = [p.as_posix() for p in self._projects]
+        parents = [self._parent_label(p, root) for p in candidate_parents(root, self._projects)]
 
         try:
-            proposals = classify([it.text for it in chosen], role_names, directories, client)
+            proposals = classify([it.text for it in chosen], role_names, directories, client, parents)
         except ValueError as exc:
             console.print(f"[red]{exc}[/red]")
             return
+
+        self._create_proposed_dirs(proposals, root)
 
         profile = proposals_to_profile(proposals)
         console.print(self._review_table(profile))

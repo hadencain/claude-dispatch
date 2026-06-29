@@ -148,3 +148,46 @@ def test_pick_directory_create_branch_creates_and_returns(tmp_path, monkeypatch)
     result = app._pick_directory(None)
     assert result == (tmp_path / "New-Thing").as_posix()
     assert (tmp_path / "New-Thing").is_dir()
+
+
+def _new_prop(slug="distortion", parent="."):
+    return Proposal(0, "make distortion", None, "", "scaffold it", "new",
+                    unresolved=False, is_new_project=True,
+                    new_dir_slug=slug, suggested_parent=parent)
+
+
+def test_create_proposed_dirs_creates_and_sets_directory(tmp_path, monkeypatch):
+    import dispatch_hub.menu as menu
+    app = _app()
+    app._projects = []
+    prop = _new_prop()
+    monkeypatch.setattr(menu, "ask_select", lambda *a, **k: "create")
+    app._create_proposed_dirs([prop], tmp_path)
+    assert prop.directory == (tmp_path / "distortion").as_posix()
+    assert (tmp_path / "distortion").is_dir()
+    assert prop.unresolved is False
+
+
+def test_create_proposed_dirs_skip_marks_unresolved(tmp_path, monkeypatch):
+    import dispatch_hub.menu as menu
+    app = _app()
+    app._projects = []
+    prop = _new_prop()
+    monkeypatch.setattr(menu, "ask_select", lambda *a, **k: "skip")
+    app._create_proposed_dirs([prop], tmp_path)
+    assert prop.directory == ""
+    assert prop.unresolved is True
+    assert not (tmp_path / "distortion").exists()
+
+
+def test_create_proposed_dirs_ignores_existing_project_items(tmp_path, monkeypatch):
+    import dispatch_hub.menu as menu
+    app = _app()
+    app._projects = []
+    prop = Proposal(0, "fix spotter", "QA", "C:/ship/spotter", "go", "r",
+                    unresolved=False)
+    # ask_select must never be called for a non-new item
+    monkeypatch.setattr(menu, "ask_select",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("called")))
+    app._create_proposed_dirs([prop], tmp_path)
+    assert prop.directory == "C:/ship/spotter"
