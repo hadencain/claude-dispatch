@@ -21,6 +21,10 @@ from .roles import RoleStore
 from .store import ProfileStore
 from .theme import MARK, STYLE, print_splash
 from .triage import DEFAULT_MODEL, Proposal, classify
+from .creation import (
+    candidate_parents, create_directory, sanitize_dirname, target_path,
+    validate_new_dir,
+)
 from .validation import check_tooling, validate_directories, validate_profile_name
 
 CONFIG_DIR = Path("config")
@@ -32,6 +36,7 @@ LAUNCH_DIR = CONFIG_DIR / LAUNCH_DIR_NAME
 # Sentinel: a picker step the user backed out of rather than answered.
 BACK = object()
 _MANUAL_DIR = "\x00manual"
+_NEW_DIR = "\x00newdir"
 _BACK_CHOICE = "\x00back"
 
 console = Console()
@@ -281,6 +286,63 @@ class App:
         wr = self._load_settings().get("workspace_root")
         return Path(wr) if wr else default_workspace_root()
 
+    @staticmethod
+    def _parent_label(p: Path, root: Path) -> str:
+        """Display/transport label for a parent: '.' for the root itself,
+        else its path relative to the root in posix form."""
+        if p == root:
+            return "."
+        try:
+            return p.relative_to(root).as_posix()
+        except ValueError:
+            return p.as_posix()
+
+    def _pick_parent(self, root: Path):
+        """Select a parent folder from the workspace's existing buckets.
+
+        Returns a parent POSIX path string, or BACK if cancelled.
+        """
+        choices = []
+        for p in candidate_parents(root, self._projects):
+            label = "· (workspace root)" if p == root else p.relative_to(root).as_posix()
+            choices.append(questionary.Choice(title=label, value=p.as_posix()))
+        return ask_select_back(
+            "Create under which folder?", choices=choices, use_search_filter=True,
+        )
+
+    def _prompt_new_directory(self):
+        """Prompt for a name + parent, create the directory, return its path.
+
+        Returns the created directory's POSIX path, or BACK if cancelled. Never
+        creates without a confirm; re-prompts on any validation failure.
+        """
+        root = self._workspace_root()
+        if self._projects is None:
+            self._projects = discover_projects(root)
+        while True:
+            name = ask_text("New project name (blank to go back):")
+            if name is None or not name.strip():
+                return BACK
+            parent_ans = self._pick_parent(root)
+            if parent_ans is BACK:
+                continue
+            parent = Path(parent_ans)
+            err = validate_new_dir(parent, name, root)
+            if err:
+                console.print(f"[red]{err}[/red]")
+                continue
+            target = target_path(parent, name)
+            if not ask_confirm(f"Create new project at {target}?"):
+                continue
+            try:
+                create_directory(target)
+            except OSError as exc:
+                console.print(f"[red]Could not create {target}: {exc}[/red]")
+                continue
+            self._projects.append(target)
+            console.print(f"[green]Created {target}.[/green]")
+            return target.as_posix()
+
     def _pick_directory(self, default: str | None):
         """Flat searchable list of discovered projects, plus manual entry.
 
@@ -296,6 +358,7 @@ class App:
             except ValueError:
                 rel = p.as_posix()
             choices.append(questionary.Choice(title=rel, value=p.as_posix()))
+        choices.append(questionary.Choice(title="✚ Create new project directory", value=_NEW_DIR))
         choices.append(questionary.Choice(title="✎ Type a path manually", value=_MANUAL_DIR))
         ans = ask_select_back(
             "Project directory (type to filter):",
@@ -305,6 +368,8 @@ class App:
         )
         if ans is BACK:
             return BACK
+        if ans == _NEW_DIR:
+            return self._prompt_new_directory()
         if ans == _MANUAL_DIR:
             typed = ask_text("Project directory (blank to go back):", default=default or "")
             if typed is None or not typed.strip():

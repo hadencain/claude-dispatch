@@ -126,3 +126,25 @@ def test_dispatch_silent_on_cancel(tmp_path, monkeypatch, capsys):
     assert flags["triage"] is False
     out = capsys.readouterr().out
     assert "Space" not in out
+
+
+def _scripted(values):
+    """A fake asker returning successive values from ``values`` per call."""
+    it = iter(values)
+    return lambda *a, **k: next(it)
+
+
+def test_pick_directory_create_branch_creates_and_returns(tmp_path, monkeypatch):
+    import dispatch_hub.menu as menu
+    app = _app()
+    monkeypatch.setattr(app, "_workspace_root", lambda: tmp_path)
+    app._projects = []  # skip discovery
+    # First ask_select_back picks the create-new sentinel; second (parent picker)
+    # returns the workspace root.
+    monkeypatch.setattr(menu, "ask_select_back",
+                        _scripted([menu._NEW_DIR, tmp_path.as_posix()]))
+    monkeypatch.setattr(menu, "ask_text", lambda *a, **k: "New Thing")
+    monkeypatch.setattr(menu, "ask_confirm", lambda *a, **k: True)
+    result = app._pick_directory(None)
+    assert result == (tmp_path / "New-Thing").as_posix()
+    assert (tmp_path / "New-Thing").is_dir()
