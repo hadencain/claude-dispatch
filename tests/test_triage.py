@@ -75,3 +75,34 @@ def test_classify_raises_after_second_bad_response():
     with pytest.raises(ValueError):
         classify(ITEMS, ROLES, DIRS, client)
     assert client.calls == 2
+
+
+def test_payload_includes_allowed_parents():
+    payload = build_user_payload(ITEMS, ROLES, DIRS, ["src/pyfiles", "."])
+    data = json.loads(payload)
+    assert data["allowed_parents"] == ["src/pyfiles", "."]
+
+
+def _canned_new():
+    return json.dumps([
+        {"item_index": 0, "role": "(none)", "is_new_project": True,
+         "new_dir_slug": "distortion", "suggested_parent": "src/audioProjects",
+         "directory": "",
+         "startup_prompt": "Scaffold and brainstorm a distortion plugin.",
+         "reason": "new project"},
+    ])
+
+
+def test_parse_new_project_fields_and_resolved():
+    props = parse_response(_canned_new(), ["make distortion"], ROLES, DIRS)
+    assert props[0].is_new_project is True
+    assert props[0].new_dir_slug == "distortion"
+    assert props[0].suggested_parent == "src/audioProjects"
+    assert props[0].unresolved is False  # empty dir is expected for a new project
+
+
+def test_parse_missing_new_fields_default_to_off():
+    props = parse_response(_canned("QA", "C:/ship/spotter"), ITEMS, ROLES, DIRS)
+    assert props[0].is_new_project is False
+    assert props[0].new_dir_slug == ""
+    assert props[0].suggested_parent == ""
